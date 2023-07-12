@@ -34,8 +34,20 @@ class Mulekhia:
     '''
     def __init__(self) -> None:
         self.img = None             # frame aquired from the image topic
-        self.in_center = False      # if the object is in the center or not
-        self.bridge = CvBridge()    # CV2 bridge to process images 
+        self.mask = None            # image mask with green in it
+        self.green_zone = None      # image part that has green in it
+        self.in_center = -1         # if the object is in the center or not
+                                    # key: -1 : not there, 0: left
+                                    #       1 : center,    2: right
+        assert self.in_center < 3 and self.in_center > -2
+
+        self.bridge = CvBridge()    # CV2 bridge to process images
+
+        # These represent the hsv borders for the color GREEN
+        self.hsv_low_green  = (40, 100, 100)
+        self.hsv_high_green = (70, 255, 255)
+
+
         self.vel_cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
         self.image_sub  = rospy.Subscriber("/camera/rgb/image_raw", Image, self.cv2_callback)
         print("intialized everything!")
@@ -50,16 +62,54 @@ class Mulekhia:
         '''
         img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
         self.img = cv2.resize(img, (img.shape[1]//4, img.shape[0]//4))
+        
+        # now we can check if the green object is in frame!
+        self.green_box_finder()
     
+    def green_box_finder(self):
+        '''
+        Based on the aquired frame, process to find the green object
+        '''
+        hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+        self.mask = cv2.inRange(hsv, self.hsv_low_green, self.hsv_high_green)
+        self.green_zone = cv2.bitwise_and(self.img, self.img, mask=self.mask)
+
+        # find the center of the detected region
+
+        # THE LAZY METHOD (NOT RECOMMEND!)
+        x, y, w, h = cv2.boundingRect(self.mask)
+        cv2.rectangle(self.green_zone, (x, y), (x+w, y+h), (0,0,255), 3)
+        
+        if w < 1:
+            # width is too small, no object in frame
+            cv2.putText(self.img, ":(", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,255,255), 2)
+            self.in_center = -1
+            return
+    
+        # now check if it is close to the center (within 10%):
+        center = self.img.shape[1]//2
+        if (x + w//2 < 0.9*center):
+            cv2.putText(self.img, "left", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (255,0,0), 2)
+            self.in_center = 0
+        
+        elif (x + w//2 > 1.1*center):
+            cv2.putText(self.img, "right", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,0,255), 2)
+            self.in_center = 2
+        
+        else:
+            cv2.putText(self.img, "nice!", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,255,0), 2)
+            self.in_center = 1
+
+
 
 
 mlk = Mulekhia()
 if __name__ == '__main__':
     # let us check if the image subscriber works!
-    # DO NOT FORGET TO INITIALIZE A NODE!
-    rospy.init_node('TestCamera')
+    
+    rospy.init_node('TestCamera')       # DO NOT FORGET TO INITIALIZE A NODE!
     while not rospy.is_shutdown():
         if mlk.img is not None:
-            cv2.imshow('ImageTopic',mlk.img)
+            cv2.imshow('ImageTopic',np.vstack([mlk.img, mlk.green_zone]))
         if cv2.waitKey(1) == ord('q'):
             break
