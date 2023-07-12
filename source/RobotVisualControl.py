@@ -48,18 +48,18 @@ class Mulekhia:
         Returns:
             - None
         '''
-        print("in the callback")
-        self.img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
-        # self.img = cv2.resize(img, (img.shape[1]//4, img.shape[0]//4))
+        img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+        self.img = cv2.resize(img, (img.shape[1]//4, img.shape[0]//4))
     
 
 
 mlk = Mulekhia()
 if __name__ == '__main__':
     # let us check if the image subscriber works!
+    # DO NOT FORGET TO INITIALIZE A NODE!
+    rospy.init_node('TestCamera')
     while not rospy.is_shutdown():
         if mlk.img is not None:
-            print(mlk.img.shape)
-            # cv2.imshow('ImageTopic',mlk.img)
-        if cv2.waitKey(10) == ord('q'):
+            cv2.imshow('ImageTopic',mlk.img)
+        if cv2.waitKey(1) == ord('q'):
             break
