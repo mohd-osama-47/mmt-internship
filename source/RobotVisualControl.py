@@ -29,7 +29,7 @@ class Mulekhia:
         - __init__(self): Creates all necessery subscribers and publishers
         - cv2_callback(self, img:sensor_msgs/Image) callback that switches from Image to cv2 frame
         - green_box_finder(self): callback that handles image processing
-        - move_robot(self, cmd:geometry_msgs/Twist): will move the robot based on what it gets
+        - move_robot(self): will move the robot based on what it gets
         - stop_robot(self): Stops the robot in its tracks.
     '''
     def __init__(self) -> None:
@@ -47,6 +47,7 @@ class Mulekhia:
         self.hsv_low_green  = (40, 100, 100)
         self.hsv_high_green = (70, 255, 255)
 
+        self.move_command = Twist()
 
         self.vel_cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
         self.image_sub  = rospy.Subscriber("/camera/rgb/image_raw", Image, self.cv2_callback)
@@ -66,7 +67,7 @@ class Mulekhia:
         # now we can check if the green object is in frame!
         self.green_box_finder()
     
-    def green_box_finder(self):
+    def green_box_finder(self) -> None:
         '''
         Based on the aquired frame, process to find the green object
         '''
@@ -84,32 +85,70 @@ class Mulekhia:
             # width is too small, no object in frame
             cv2.putText(self.img, ":(", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,255,255), 2)
             self.in_center = -1
-            return
-    
-        # now check if it is close to the center (within 10%):
-        center = self.img.shape[1]//2
-        if (x + w//2 < 0.9*center):
-            cv2.putText(self.img, "left", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (255,0,0), 2)
-            self.in_center = 0
+            
+        else:
+            # now check if it is close to the center (within 10%):
+            center = self.img.shape[1]//2
+            if (x + w//2 < 0.9*center):
+                cv2.putText(self.img, "left", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (255,0,0), 2)
+                self.in_center = 0
+            
+            elif (x + w//2 > 1.1*center):
+                cv2.putText(self.img, "right", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,0,255), 2)
+                self.in_center = 2
+            
+            else:
+                cv2.putText(self.img, "nice!", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,255,0), 2)
+                self.in_center = 1
         
-        elif (x + w//2 > 1.1*center):
-            cv2.putText(self.img, "right", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,0,255), 2)
-            self.in_center = 2
+        self.move_robot()
+
+    def stop_robot(self) -> None:
+        '''
+        Stops the robot NOW
+        '''
+        self.move_command.linear.x = 0
+        self.move_command.linear.y = 0
+        self.move_command.linear.z = 0
+
+        self.move_command.angular.x = 0
+        self.move_command.angular.y = 0
+        self.move_command.angular.z = 0
+
+        # self.vel_cmd_pub.publish(self.move_command)
+
+    def move_robot(self) -> None:
+        '''
+        Moves the robot based on where the target object is located
+        '''
+        if self.in_center == -1:
+            # No object detected
+            self.stop_robot()
+        
+        elif self.in_center == 0:
+            # object to the left
+            self.move_command.angular.z = 15 * 3.1415192 / 180      # rotate at a rate of 15 deg/sec
+        
+        elif self.in_center == 2:
+            # object to the right
+            self.move_command.angular.z = -15 * 3.1415192 / 180      # rotate at a rate of 15 deg/sec
         
         else:
-            cv2.putText(self.img, "nice!", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,255,0), 2)
-            self.in_center = 1
+            # centered!
+            self.stop_robot()
+
+        self.vel_cmd_pub.publish(self.move_command)
 
 
-
-
-mlk = Mulekhia()
 if __name__ == '__main__':
     # let us check if the image subscriber works!
     
     rospy.init_node('TestCamera')       # DO NOT FORGET TO INITIALIZE A NODE!
+    mlk = Mulekhia()
+
     while not rospy.is_shutdown():
         if mlk.img is not None:
-            cv2.imshow('ImageTopic',np.vstack([mlk.img, mlk.green_zone]))
+            # cv2.imshow('ImageTopic',np.vstack([mlk.img, mlk.green_zone]))
+            cv2.imshow('ImageTopic',mlk.img)
         if cv2.waitKey(1) == ord('q'):
             break
