@@ -17,8 +17,8 @@ import numpy as np
 from cv_bridge import CvBridge
 
 # MSGS imports
-from sensor_msgs.msg import Image
 from geometry_msgs.msg import Twist
+from sensor_msgs.msg import Image, LaserScan
 
 
 class Mulekhia:
@@ -39,9 +39,11 @@ class Mulekhia:
         self.in_center = -1         # if the object is in the center or not
                                     # key: -1 : not there, 0: left
                                     #       1 : center,    2: right
-        
         assert self.in_center < 3 and self.in_center > -2
 
+        self.obstacle_threshold = 0.2       # represents how close we can get to the obstacle
+        self.too_close= False               # represents if the threshold is passed
+        
         self.angle_rate = 15 * np.pi/180    # represents rate of angle change for movements
         self.delta_x = 0            # represents difference from center zone
 
@@ -56,7 +58,14 @@ class Mulekhia:
         self.vel_cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
         self.image_sub  = rospy.Subscriber("/camera/rgb/image_raw", Image, self.cv2_callback)
         print("intialized everything!")
+        self.lidar_sub = rospy.Subscriber('/scan', LaserScan, self.measure_distance, queue_size=1)
     
+    def measure_distance(self, msg:LaserScan) -> None:
+        '''
+        Check if the obstacle is within the threshold, if so update the variable too_close
+        '''
+        # UPDATE HERE TO MAKE THE ROBOT STOP IF THE OBSTACLE CROSSES THE THRESHOLD
+
     def cv2_callback(self, msg:Image) -> None:
         '''
         Transforms the msg from a ROS msg type to a cv2 compatible frame.
@@ -147,6 +156,15 @@ class Mulekhia:
         else:
             # centered!
             self.stop_robot()
+            # self.move_command.linear.x = 0.15 # m/sec
+            
+            
+            #! NOW we need to find a way to find the distance from the object infront of us:
+            #! luckily, we have a LIDAR publishing to topic /scan
+
+            #! scan represents a lidar reading per angle
+            #! LET US ASSSUME that we are interested in the region +- 15 degrees
+
 
         self.vel_cmd_pub.publish(self.move_command)
 
