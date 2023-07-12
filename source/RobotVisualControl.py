@@ -39,7 +39,11 @@ class Mulekhia:
         self.in_center = -1         # if the object is in the center or not
                                     # key: -1 : not there, 0: left
                                     #       1 : center,    2: right
+        
         assert self.in_center < 3 and self.in_center > -2
+
+        self.angle_rate = 15 * np.pi/180    # represents rate of angle change for movements
+        self.delta_x = 0            # represents difference from center zone
 
         self.bridge = CvBridge()    # CV2 bridge to process images
 
@@ -81,6 +85,7 @@ class Mulekhia:
         x, y, w, h = cv2.boundingRect(self.mask)
         cv2.rectangle(self.green_zone, (x, y), (x+w, y+h), (0,0,255), 3)
         
+        self.delta_x = 0
         if w < 1:
             # width is too small, no object in frame
             cv2.putText(self.img, ":(", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,255,255), 2)
@@ -92,14 +97,17 @@ class Mulekhia:
             if (x + w//2 < 0.9*center):
                 cv2.putText(self.img, "left", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (255,0,0), 2)
                 self.in_center = 0
+                self.delta_x = (0.9*center - x + w//2) / self.img.shape[1]
             
             elif (x + w//2 > 1.1*center):
                 cv2.putText(self.img, "right", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,0,255), 2)
                 self.in_center = 2
+                self.delta_x = (x + w//2 - 1.1*center) / self.img.shape[1]
             
             else:
                 cv2.putText(self.img, "nice!", (0,50), cv2.FONT_HERSHEY_PLAIN, 2, (0,255,0), 2)
                 self.in_center = 1
+                self.delta_x = 0
         
         self.move_robot()
 
@@ -121,17 +129,20 @@ class Mulekhia:
         '''
         Moves the robot based on where the target object is located
         '''
+        
         if self.in_center == -1:
             # No object detected
             self.stop_robot()
         
         elif self.in_center == 0:
             # object to the left
-            self.move_command.angular.z = 15 * 3.1415192 / 180      # rotate at a rate of 15 deg/sec
+            # rotate at a rate of 15 deg/sec
+            self.move_command.angular.z = self.angle_rate + 10 * self.delta_x * self.angle_rate
         
         elif self.in_center == 2:
             # object to the right
-            self.move_command.angular.z = -15 * 3.1415192 / 180      # rotate at a rate of 15 deg/sec
+            # rotate at a rate of 15 deg/sec
+            self.move_command.angular.z = -self.angle_rate - 10 * self.delta_x * self.angle_rate
         
         else:
             # centered!
@@ -147,8 +158,7 @@ if __name__ == '__main__':
     mlk = Mulekhia()
 
     while not rospy.is_shutdown():
-        if mlk.img is not None:
-            # cv2.imshow('ImageTopic',np.vstack([mlk.img, mlk.green_zone]))
-            cv2.imshow('ImageTopic',mlk.img)
+        if mlk.img is not None and mlk.green_zone is not None:
+            cv2.imshow('ImageTopic',np.vstack([mlk.img, mlk.green_zone]))
         if cv2.waitKey(1) == ord('q'):
-            break
+            rospy.signal_shutdown('Done executing, thx!')
