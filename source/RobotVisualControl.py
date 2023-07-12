@@ -41,7 +41,7 @@ class Mulekhia:
                                     #       1 : center,    2: right
         assert self.in_center < 3 and self.in_center > -2
 
-        self.obstacle_threshold = 0.2       # represents how close we can get to the obstacle
+        self.obstacle_threshold = 1.0       # represents how close we can get to the obstacle
         self.too_close= False               # represents if the threshold is passed
         
         self.angle_rate = 15 * np.pi/180    # represents rate of angle change for movements
@@ -64,7 +64,11 @@ class Mulekhia:
         '''
         Check if the obstacle is within the threshold, if so update the variable too_close
         '''
-        # UPDATE HERE TO MAKE THE ROBOT STOP IF THE OBSTACLE CROSSES THE THRESHOLD
+        average_dist = np.average(msg.ranges[-15:] + msg.ranges[:16])
+        if average_dist <= self.obstacle_threshold:
+            self.too_close = True
+        else:
+            self.too_close = False
 
     def cv2_callback(self, msg:Image) -> None:
         '''
@@ -155,15 +159,11 @@ class Mulekhia:
         
         else:
             # centered!
-            self.stop_robot()
-            # self.move_command.linear.x = 0.15 # m/sec
-            
-            
-            #! NOW we need to find a way to find the distance from the object infront of us:
-            #! luckily, we have a LIDAR publishing to topic /scan
-
-            #! scan represents a lidar reading per angle
-            #! LET US ASSSUME that we are interested in the region +- 15 degrees
+            if self.too_close:
+                self.stop_robot()
+            else:
+                self.move_command.angular.z = 0.0
+                self.move_command.linear.x = 0.15 # m/sec
 
 
         self.vel_cmd_pub.publish(self.move_command)
